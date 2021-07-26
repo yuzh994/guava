@@ -20,6 +20,7 @@ import static com.google.common.hash.Hashing.murmur3_32;
 
 import com.google.common.base.Charsets;
 import com.google.common.hash.HashTestUtils.HashFn;
+import java.nio.charset.Charset;
 import java.util.Random;
 import junit.framework.TestCase;
 
@@ -51,28 +52,33 @@ public class Murmur3Hash32Test extends TestCase {
         -528633700, murmur3_32().hashUnencodedChars("The quick brown fox jumps over the lazy dog"));
   }
 
-  public void testKnownUtf8StringInputs() {
-    assertHash(0, murmur3_32().hashString("", Charsets.UTF_8));
-    assertHash(0xcfbda5d1, murmur3_32().hashString("k", Charsets.UTF_8));
-    assertHash(0xa167dbf3, murmur3_32().hashString("hell", Charsets.UTF_8));
-    assertHash(0x248bfa47, murmur3_32().hashString("hello", Charsets.UTF_8));
-    assertHash(0x3d41b97c, murmur3_32().hashString("http://www.google.com/", Charsets.UTF_8));
-    assertHash(
-        0x2e4ff723,
-        murmur3_32().hashString("The quick brown fox jumps over the lazy dog", Charsets.UTF_8));
-    assertHash(0xfc5ba834, murmur3_32().hashString("毎月１日,毎週月曜日", Charsets.UTF_8));
-    assertHash(
-        0x3f4aff5c,
-        murmur3_32().hashString(Character.toString(Character.MAX_VALUE), Charsets.UTF_8));
-    assertHash(
-        0x81db5903,
-        murmur3_32()
-            .hashString(new String(Character.toChars(Character.MAX_VALUE + 1)), Charsets.UTF_8));
-    // Note (https://github.com/google/guava/issues/5648) the hash expected here is not correct
-    assertHash(
-        0x256068c8,
-        murmur3_32()
-            .hashString(new String(Character.toChars(Character.MAX_CODE_POINT)), Charsets.UTF_8));
+  public void testKnownEncodedStringInputs() {
+    assertStringHash(0, "", Charsets.UTF_8);
+    assertStringHash(0xcfbda5d1, "k", Charsets.UTF_8);
+    assertStringHash(0xa167dbf3, "hell", Charsets.UTF_8);
+    assertStringHash(0x248bfa47, "hello", Charsets.UTF_8);
+    assertStringHash(0x3d41b97c, "http://www.google.com/", Charsets.UTF_8);
+    assertStringHash(0x2e4ff723, "The quick brown fox jumps over the lazy dog", Charsets.UTF_8);
+    assertStringHash(0xb5a4be05, "ABCDefGHI\u0799", Charsets.UTF_8);
+    assertStringHash(0xfc5ba834, "毎月１日,毎週月曜日", Charsets.UTF_8);
+    assertStringHash(0x8a5c3699, "surrogate pair: \uD83D\uDCB0", Charsets.UTF_8);
+
+    assertStringHash(0, "", Charsets.UTF_16LE);
+    assertStringHash(0x288418e4, "k", Charsets.UTF_16LE);
+    assertStringHash(0x5a0cb7c3, "hell", Charsets.UTF_16LE);
+    assertStringHash(0xd7c31989, "hello", Charsets.UTF_16LE);
+    assertStringHash(0x73564d8c, "http://www.google.com/", Charsets.UTF_16LE);
+    assertStringHash(0xe07db09c, "The quick brown fox jumps over the lazy dog", Charsets.UTF_16LE);
+    assertStringHash(0xfefa3e76, "ABCDefGHI\u0799", Charsets.UTF_16LE);
+    assertStringHash(0x6a7be132, "毎月１日,毎週月曜日", Charsets.UTF_16LE);
+    assertStringHash(0x5a2d41c7, "surrogate pair: \uD83D\uDCB0", Charsets.UTF_16LE);
+  }
+
+  private void assertStringHash(int expected, String string, Charset charset) {
+    assertHash(expected, murmur3_32().hashString(string, charset));
+    assertHash(expected, murmur3_32().newHasher().putString(string, charset).hash());
+    assertHash(expected, murmur3_32().hashBytes(string.getBytes(charset)));
+    assertHash(expected, murmur3_32().newHasher().putBytes(string.getBytes(charset)).hash());
   }
 
   @SuppressWarnings("deprecation")
@@ -83,7 +89,7 @@ public class Murmur3Hash32Test extends TestCase {
   }
 
   @SuppressWarnings("deprecation")
-  public void testStringInputsUtf8() {
+  public void testEncodedStringInputs() {
     Random rng = new Random(0);
     for (int z = 0; z < 100; z++) {
       String str;
@@ -100,9 +106,16 @@ public class Murmur3Hash32Test extends TestCase {
         builder.appendCodePoint(codePoints[i]);
       }
       str = builder.toString();
+      HashCode hashUtf8 = murmur3_32().hashBytes(str.getBytes(Charsets.UTF_8));
       assertEquals(
-          murmur3_32().hashBytes(str.getBytes(Charsets.UTF_8)),
-          murmur3_32().hashString(str, Charsets.UTF_8));
+          hashUtf8, murmur3_32().newHasher().putBytes(str.getBytes(Charsets.UTF_8)).hash());
+      assertEquals(hashUtf8, murmur3_32().hashString(str, Charsets.UTF_8));
+      assertEquals(hashUtf8, murmur3_32().newHasher().putString(str, Charsets.UTF_8).hash());
+      HashCode hashUtf16 = murmur3_32().hashBytes(str.getBytes(Charsets.UTF_16));
+      assertEquals(
+          hashUtf16, murmur3_32().newHasher().putBytes(str.getBytes(Charsets.UTF_16)).hash());
+      assertEquals(hashUtf16, murmur3_32().hashString(str, Charsets.UTF_16));
+      assertEquals(hashUtf16, murmur3_32().newHasher().putString(str, Charsets.UTF_16).hash());
     }
   }
 
