@@ -2173,6 +2173,7 @@ class LocalCache<K, V> extends AbstractMap<K, V> implements ConcurrentMap<K, V> 
           // detected. This may be circumvented when an entry is copied, but will fail fast most
           // of the time.
           synchronized (e) {
+            //加载新值
             return loadSync(key, hash, loadingValueReference, loader);
           }
         } finally {
@@ -2336,6 +2337,7 @@ class LocalCache<K, V> extends AbstractMap<K, V> implements ConcurrentMap<K, V> 
           throw new InvalidCacheLoadException("CacheLoader returned null for key " + key + ".");
         }
         statsCounter.recordLoadSuccess(loadingValueReference.elapsedNanos());
+        //存储加载的值
         storeLoadedValue(key, hash, loadingValueReference, value);
         return value;
       } finally {
@@ -2670,6 +2672,7 @@ class LocalCache<K, V> extends AbstractMap<K, V> implements ConcurrentMap<K, V> 
       }
 
       while (totalWeight > maxSegmentWeight) {
+        //从 accessQueue 中拿到最后一个
         ReferenceEntry<K, V> e = getNextEvictable();
         if (!removeEntry(e, e.getHash(), RemovalCause.SIZE)) {
           throw new AssertionError();
@@ -3191,6 +3194,7 @@ class LocalCache<K, V> extends AbstractMap<K, V> implements ConcurrentMap<K, V> 
               }
               setValue(e, key, newValue, now);
               this.count = newCount; // write-volatile
+              //驱逐 多余的Key
               evictEntries(e);
               return true;
             }
@@ -3210,6 +3214,7 @@ class LocalCache<K, V> extends AbstractMap<K, V> implements ConcurrentMap<K, V> 
         return true;
       } finally {
         unlock();
+        //在这里真正驱逐
         postWriteCleanup();
       }
     }
