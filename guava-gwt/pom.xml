@@ -112,6 +112,12 @@
       <artifactId>checker-qual</artifactId>
       <classifier>sources</classifier>
     </dependency>
+      <dependency>
+          <groupId>com.google.gwt</groupId>
+          <artifactId>gwt-user</artifactId>
+          <version>2.9.0</version>
+          <scope>compile</scope>
+      </dependency>
   </dependencies>
   <build>
     <plugins>
