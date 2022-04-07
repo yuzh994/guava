@@ -2027,18 +2027,32 @@ class LocalCache<K, V> extends AbstractMap<K, V> implements ConcurrentMap<K, V> 
       checkNotNull(key);
       checkNotNull(loader);
       try {
+
+        //read-volatile  count不为空说明还有元素可以读取
         if (count != 0) { // read-volatile
-          // don't call getLiveEntry, which would ignore loading values
+          //获取对应下标的链表的第一个节点。然后遍历链表获取对应key的值
           ReferenceEntry<K, V> e = getEntry(key, hash);
           if (e != null) {
+            //获取当前时间，纳秒
             long now = map.ticker.read();
+            //获取value的值 根据expireAfterAccess和expireAfterWrite进行判断是否过期
+            // 如果没设置expireAfterXxxx或者设置了没过期，那就不会返回null
+            // 第一步：!!!!!!!先判断expireAfterXxxx
+            // 拿到没过期存活的数据
             V value = getLiveValue(e, now);
+
+            // 终于发现一个正常值
             if (value != null) {
+              // 记录值的方法时间accessTime，以及进最近使用使用队列recencyQueue
               recordRead(e, now);
+              // 累加命中次数，用于计算命中率
               statsCounter.recordHits(1);
+              //第二步：!!!!!!!expireAfterXxxx不需要处理，在判断是否需要处理refreshAfterWrite
               return scheduleRefresh(e, key, hash, value, now, loader);
             }
+            // 走到这步，说明取出来的值 value == null， 可能是过期了，也有可能正在刷新
             ValueReference<K, V> valueReference = e.getValueReference();
+            // 如果此时value正在loading，那么此时等待刷新结果
             if (valueReference.isLoading()) {
               return waitForLoadingValue(e, key, valueReference);
             }
@@ -2046,6 +2060,9 @@ class LocalCache<K, V> extends AbstractMap<K, V> implements ConcurrentMap<K, V> 
         }
 
         // at this point e is either null or expired;
+        // 到了这步，e要么空要么超时，需要加锁进行加载
+        // 第三步：调用到lockedGetOrLoad()，如果第一步超时了，就会调用到这里。会加锁，然后判断是否loading来决定是否阻塞等待或者是直接获取数据。
+        // 第三步：调用到lockedGetOrLoad()，如果第一步超时了，就会调用到这里。会加锁，然后判断是否loading来决定是否阻塞等待或者是直接获取数据。
         return lockedGetOrLoad(key, hash, loader);
       } catch (ExecutionException ee) {
         Throwable cause = ee.getCause();
@@ -2336,9 +2353,13 @@ class LocalCache<K, V> extends AbstractMap<K, V> implements ConcurrentMap<K, V> 
         V oldValue,
         long now,
         CacheLoader<? super K, V> loader) {
+      // 开启了定时刷新(配置了refreshAfterWrite(n), n > 0)
+      // && 当前时间 - 上次更新时间 > 刷新时间
+      // && 除了不是LoadingValueReference
       if (map.refreshes()
           && (now - entry.getWriteTime() > map.refreshNanos)
           && !entry.getValueReference().isLoading()) {
+        // 进行刷新
         V newValue = refresh(key, hash, loader, true);
         if (newValue != null) {
           return newValue;
@@ -2355,12 +2376,16 @@ class LocalCache<K, V> extends AbstractMap<K, V> implements ConcurrentMap<K, V> 
      */
     @Nullable
     V refresh(K key, int hash, CacheLoader<? super K, V> loader, boolean checkTime) {
+      // 插入loadingValueReference，表示该值正在loading。其实就是告诉其他线程正在loading中。
+      // - 有如下两种情况：
+      // -- 第一种：expireAfterXxxx设置的时间过期了。发现正在loading中，会等阻塞等待loading结束在获取值
+      // -- 第二种：expireAfterXxxx设置的时间没过期。发现正在loading中，会直接跳过异步刷新步骤， return oldValue;
       final LoadingValueReference<K, V> loadingValueReference =
           insertLoadingValueReference(key, hash, checkTime);
       if (loadingValueReference == null) {
         return null;
       }
-
+      // 用future进行了阻塞
       ListenableFuture<V> result = loadAsync(key, hash, loadingValueReference, loader);
       if (result.isDone()) {
         try {
@@ -2585,11 +2610,16 @@ class LocalCache<K, V> extends AbstractMap<K, V> implements ConcurrentMap<K, V> 
       }
     }
 
+    /**
+     * 清除过期的数据
+     * @param now
+     */
     @GuardedBy("this")
     void expireEntries(long now) {
       drainRecencyQueue();
 
       ReferenceEntry<K, V> e;
+      // 清理write、access队列超时的元素
       while ((e = writeQueue.peek()) != null && map.isExpired(e, now)) {
         if (!removeEntry(e, e.getHash(), RemovalCause.EXPIRED)) {
           throw new AssertionError();

@@ -15,19 +15,19 @@ import java.util.concurrent.TimeUnit;
 
 public class CacheTest {
 
-    public static void main(String[] args) throws ExecutionException {
+    public static void main(String[] args) throws Exception {
         LoadingCache<Object, Object> userCache = CacheBuilder.newBuilder()
                 // 基于容量回收。缓存的最大数量。超过就取MAXIMUM_CAPACITY = 1 << 30。依靠LRU队列recencyQueue来进行容量淘汰
-                //.maximumSize(1000)
+                .maximumSize(2)
                 // 基于容量回收。但这是统计占用内存大小，maximumWeight与maximumSize不能同时使用。设置最大总权重
-                .maximumWeight(1000)
+                //.maximumWeight(2)
                 // 设置权重（可当成每个缓存占用的大小）
-                .weigher((o, o2) -> 5)
+                //.weigher((o, o2) -> 5)
                 // 软弱引用（引用强度顺序：强软弱虚）
                 // -- 弱引用key
-                .weakKeys()
-                // -- 弱引用value
-                .weakValues()
+//                .weakKeys()
+//                // -- 弱引用value
+//                .weakValues()
                 // -- 软引用value
                 //.softValues()
                 // 过期失效回收
@@ -63,10 +63,12 @@ public class CacheTest {
                     }
                 });
         // 简单使用
-        userCache.get("a");
+        System.out.println(userCache.get("a"));
+        System.out.println(userCache.get("b"));
+       // Thread.sleep(6 *1000);
 
-        userCache.get("b");
-
+        System.out.println(userCache.get("c"));
+        System.out.println(userCache.get("a"));
 
     }
 }
